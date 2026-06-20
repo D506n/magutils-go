@@ -188,6 +188,51 @@ runner := star.NewRunner(
 )
 ```
 
+### Расширение Go-функциями (WithBuiltin)
+
+Через опцию `WithBuiltin` можно добавить любую Go-функцию в Starlark-окружение. Сигнатура функции:
+
+```go
+func myFunc(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error)
+```
+
+Для разбора аргументов используй `starlark.UnpackArgs`:
+
+```go
+func httpGet(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+    var url string
+    if err := starlark.UnpackArgs("http_get", args, kwargs, "url", &url); err != nil {
+        return nil, err
+    }
+    // ... делаем HTTP-запрос
+    return starlark.String(body), nil
+}
+
+runner := star.NewRunner(
+    star.WithBuiltin("http_get", starlark.NewBuiltin("http_get", httpGet)),
+)
+```
+
+Для группировки функций в структуру (как `http.get`, `http.post`) используй `starlarkstruct`:
+
+```go
+httpStruct := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+    "get":  starlark.NewBuiltin("http_get", httpGet),
+    "post": starlark.NewBuiltin("http_post", httpPost),
+})
+
+runner := star.NewRunner(
+    star.WithBuiltin("http", httpStruct),
+)
+```
+
+В Starlark это будет работать как:
+
+```starlark
+data = http.get("https://api.example.com/data")
+resp = http.post("https://api.example.com/submit", body)
+```
+
 ### Как это работает
 
 Пользовательский скрипт автоматически оборачивается в шаблон:

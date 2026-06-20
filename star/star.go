@@ -13,6 +13,7 @@ import (
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
+	"go.starlark.net/syntax"
 )
 
 // ========================================
@@ -96,18 +97,20 @@ type Result struct {
 // Runner выполняет Starlark-скрипты с заданным setup и wrapper.
 // Аналог Runner из Python, но без пула контекстов (в Go он не нужен).
 type Runner struct {
-	mu       sync.Mutex
-	setup    Setup
-	wrapper  Wrapper
-	builtins starlark.StringDict // предзагруженные builtin-функции
-	cache    sync.Map            // map[string]string — кеш обёрнутых скриптов
+	mu            sync.Mutex
+	setup         Setup
+	wrapper       Wrapper
+	builtins      starlark.StringDict // предзагруженные builtin-функции
+	extraBuiltins starlark.StringDict // кастомные builtin-функции (добавляются через WithBuiltin)
+	cache         sync.Map            // map[string]string — кеш обёрнутых скриптов
 }
 
 // NewRunner создаёт Runner с настройками по умолчанию.
 func NewRunner(opts ...Option) *Runner {
 	r := &Runner{
-		setup:   DefaultSetup,
-		wrapper: DefaultWrapper,
+		setup:         DefaultSetup,
+		wrapper:       DefaultWrapper,
+		extraBuiltins: make(starlark.StringDict),
 	}
 	for _, opt := range opts {
 		opt(r)
@@ -127,6 +130,21 @@ func WithSetup(s Setup) Option {
 func WithWrapper(w Wrapper) Option {
 	return func(r *Runner) {
 		r.wrapper = w
+	}
+}
+
+// WithBuiltin добавляет кастомную builtin-функцию в Starlark-окружение.
+// name — имя функции в Starlark (например "http_get").
+// fn — реализация функции в Go.
+//
+// Пример:
+//
+//	runner := star.NewRunner(
+//	    star.WithBuiltin("http_get", starlark.NewBuiltin("http_get", httpGet)),
+//	)
+func WithBuiltin(name string, fn *starlark.Builtin) Option {
+	return func(r *Runner) {
+		r.extraBuiltins[name] = fn
 	}
 }
 
@@ -194,16 +212,19 @@ func (r *Runner) Run(script string, data starlark.Value) *Result {
 		},
 	}
 
-	// 3. Готовим глобалы: builtins + input + _star_start
-	globals := make(starlark.StringDict)
+	// 3. Готовим глобалы: builtins + extraBuiltins + input + _star_start
+	globals := make(starlark.StringDict, len(r.builtins)+len(r.extraBuiltins)+2)
 	for k, v := range r.builtins {
+		globals[k] = v
+	}
+	for k, v := range r.extraBuiltins {
 		globals[k] = v
 	}
 	globals["input"] = data
 	globals["_star_start"] = starlark.Float(float64(time.Now().UnixMilli()) / 1000.0)
 
 	// 4. Выполняем
-	globalsOut, err := starlark.ExecFile(thread, "main.star", wrapped, globals)
+	globalsOut, err := starlark.ExecFileOptions(syntax.LegacyFileOptions(), thread, "main.star", wrapped, globals)
 	if err != nil {
 		res.Error = err
 		res.Prints = prints

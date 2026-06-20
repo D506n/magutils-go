@@ -506,3 +506,37 @@ func TestRegexpCache(t *testing.T) {
 		t.Error("expected different regexp for different pattern")
 	}
 }
+
+// ========================================
+// WithBuiltin tests
+// ========================================
+
+// testBuiltinFunc — простая builtin-функция, возвращающая строку "test".
+func testBuiltinFunc(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return starlark.String("test"), nil
+}
+
+func TestRunner_WithBuiltin(t *testing.T) {
+	r := NewRunner(
+		WithBuiltin("ping", starlark.NewBuiltin("ping", testBuiltinFunc)),
+	)
+	script := `return ping()`
+	data := starlark.NewDict(0)
+	res := r.Run(script, data)
+
+	if !res.Success {
+		t.Fatalf("expected success, got error: %v", res.Error)
+	}
+
+	dict, ok := res.Value.(*starlark.Dict)
+	if !ok {
+		t.Fatalf("expected *starlark.Dict, got %T", res.Value)
+	}
+	val, found, err := dict.Get(starlark.String("result"))
+	if !found || err != nil {
+		t.Fatal("expected key 'result'")
+	}
+	if val != starlark.String("test") {
+		t.Errorf("expected 'test', got %v", val)
+	}
+}
