@@ -46,7 +46,7 @@ tag-push tag msg=default_msg:
     just test
     git add .
     git commit -m '{{msg}}'
-    # uv run tag_upd.py -t {{tag}} -m '{{msg}}'
+    # uv run tag_upd.py -t v{{tag}} -m '{{msg}}'
     git push
     git tag {{tag}}
     git push origin {{tag}}

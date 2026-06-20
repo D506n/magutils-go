@@ -7,9 +7,10 @@
 | Модуль | Статус | Описание |
 |--------|--------|----------|
 | [`id`](id/id.go) | ✅ Готово | Генерация коротких уникальных ID (nanoid) |
+| [`json-path`](json-path) | ✅ Готово | DSL для навигации и манипуляции вложенными JSON-структурами |
 | [`logging/handlers`](logging/handlers) | ✅ Готово | Кастомные `slog.Handler`: цветной консольный и JSON |
 | [`star`](star/star.go) | ✅ Готово | Выполнение Starlark-скриптов в изолированном контексте |
-| `env` | ✅ Готово | Загрузка конфигурации из `.env` файлов и переменных окружения |
+| [`env`](env/env.go) | ✅ Готово | Загрузка конфигурации из `.env` файлов и переменных окружения |
 
 ---
 
@@ -222,6 +223,141 @@ results = main(input)
 
 ---
 
+## json-path
+
+Пакет для навигации и манипуляции вложенными JSON-структурами (`map[string]any` / `[]any`) через строковые пути. Аналог Python-модуля `magutils.json_path`.
+
+### Установка
+
+```go
+import "github.com/D506n/magutils-go/json-path"
+```
+
+### Синтаксис пути
+
+| Пример | Сегменты | Описание |
+|--------|----------|----------|
+| `a.b.c` | `Key → Key → Key` | Доступ по ключам словаря |
+| `items.0.id` | `Key → Index → Key` | Доступ по индексу списка |
+| `items.-1.id` | `Key → Index → Key` | Отрицательный индекс (с конца) |
+| `items.*.id` | `Key → Wildcard → Key` | Обход всех элементов списка |
+| `list.!a` | `Key → Append` | Добавление в конец списка |
+
+### Использование
+
+```go
+data := map[string]any{
+    "user": map[string]any{
+        "name": "Alice",
+        "tags": []any{"admin", "editor"},
+    },
+}
+
+// GetByPath — чтение
+vals, _ := jsonpath.GetByPath("user.name", data)
+fmt.Println(vals) // ["Alice"]
+
+vals, _ = jsonpath.GetByPath("user.tags.*", data)
+fmt.Println(vals) // ["admin", "editor"]
+
+// С значением по умолчанию
+vals, _ = jsonpath.GetByPath("user.missing.key", data,
+    jsonpath.WithDefault("fallback"))
+fmt.Println(vals) // ["fallback"]
+
+// SetByPath — запись
+jsonpath.SetByPath("user.name", data, "Bob")
+// data["user"]["name"] == "Bob"
+
+// Автосоздание промежуточных структур
+jsonpath.SetByPath("a.b.c", data, 42)
+// data["a"]["b"]["c"] == 42
+
+// Append в конец списка
+jsonpath.SetByPath("user.tags.!a", data, "moderator")
+// data["user"]["tags"] == ["admin", "editor", "moderator"]
+
+// DelByPath — удаление
+jsonpath.DelByPath("user.tags.0", data)
+// data["user"]["tags"] == ["editor", "moderator"]
+
+// Wildcard-удаление
+jsonpath.DelByPath("user.tags.*", data)
+// data["user"]["tags"] == []
+```
+
+### DeepMerge — глубокое слияние
+
+```go
+base := map[string]any{"a": 1, "b": map[string]any{"c": 2}}
+patch := map[string]any{"b": map[string]any{"d": 3}, "e": 4}
+
+merged := jsonpath.DeepMerge(base, patch)
+// merged == {"a": 1, "b": {"c": 2, "d": 3}, "e": 4}
+// base — не изменён
+
+// Без копирования (мутирует base)
+merged2 := jsonpath.DeepMerge(base, patch, false)
+// base == merged2
+```
+
+### DeepCopy — глубокое копирование
+
+```go
+original := map[string]any{"a": []any{1, 2, 3}}
+copied := jsonpath.DeepCopy(original).(map[string]any)
+
+copied["a"].([]any)[0] = 99
+// original["a"][0] == 1 — не изменился
+```
+
+### Rebuild — трансформация данных
+
+```go
+data := map[string]any{
+    "items": []any{
+        map[string]any{"id": 10, "val": "x"},
+        map[string]any{"id": 20, "val": "y"},
+    },
+}
+
+// Простое перекладывание
+result, _ := jsonpath.Rebuild(data, "items.0.id->target")
+// result == {"target": 10}
+
+// Несколько трансформаций
+result, _ = jsonpath.Rebuild(data,
+    "items.*.id-> *.id",
+    "items.*.val-> *.value",
+)
+// result == [{"id": 10, "value": "x"}, {"id": 20, "value": "y"}]
+```
+
+### Format — шаблонизация строк
+
+```go
+data := map[string]any{"name": "Alice", "role": "admin"}
+text, _ := jsonpath.Format("User {name} has role {role}", data)
+// text == "User Alice has role admin"
+```
+
+### DictToPaths — генерация путей из структуры
+
+```go
+data := map[string]any{
+    "a": map[string]any{"b": 1, "c": 2},
+    "d": []any{map[string]any{"e": 3}},
+}
+
+paths, _ := jsonpath.DictToPaths(data)
+// paths == ["a.b", "a.c", "d.*.e"]
+
+paths, _ = jsonpath.DictToPaths(data, "strict")
+// paths == ["a.b", "a.c", "d.0.e"]
+```
+
+---
+
 ## Тестирование
 
 ```bash
@@ -231,10 +367,9 @@ go test ./...
 # Тесты конкретного пакета
 go test ./star/...
 go test ./id/...
+go test ./json-path/...
 go test ./logging/handlers/...
 
-# С бенчмарками
-go test -bench=. ./id/...
 ```
 
 ---
