@@ -238,6 +238,8 @@ func formatValue(v starlark.Value) string {
 	switch val := v.(type) {
 	case starlark.Float:
 		return strconv.FormatFloat(float64(val), 'f', 6, 64)
+	case starlark.String:
+		return string(val)
 	default:
 		return v.String()
 	}
