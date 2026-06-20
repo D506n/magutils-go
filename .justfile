@@ -48,8 +48,8 @@ tag-push tag msg=default_msg:
     git commit -m '{{msg}}'
     # uv run tag_upd.py -t v{{tag}} -m '{{msg}}'
     git push
-    git tag {{tag}}
-    git push origin {{tag}}
+    git tag v{{tag}}
+    git push origin v{{tag}}
 
 rundl file=default_compose_file:
     just rund {{file}}
