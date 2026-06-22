@@ -148,6 +148,12 @@ func WithBuiltin(name string, fn *starlark.Builtin) Option {
 	}
 }
 
+func WithStruct(name string, str *starlarkstruct.Struct) Option {
+	return func (r *Runner) {
+		r.extraBuiltins[name] = str
+	}
+}
+
 // initBuiltins инициализирует встроенные функции Starlark.
 // Аналог BaseCTX.setup() в Python.
 func (r *Runner) initBuiltins() {
